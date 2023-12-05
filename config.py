@@ -16,6 +16,7 @@ class Args(NamedTuple):
     pipeline: str
     ssl_certfile: str
     ssl_keyfile: str
+    use_sfast: bool
 
 
 MAX_QUEUE_SIZE = int(os.environ.get("MAX_QUEUE_SIZE", 0))
@@ -23,6 +24,7 @@ TIMEOUT = float(os.environ.get("TIMEOUT", 0))
 SAFETY_CHECKER = os.environ.get("SAFETY_CHECKER", None) == "True"
 TORCH_COMPILE = os.environ.get("TORCH_COMPILE", None) == "True"
 USE_TAESD = os.environ.get("USE_TAESD", None) == "True"
+USE_SFAST = False
 default_host = os.getenv("HOST", "0.0.0.0")
 default_port = int(os.getenv("PORT", "7860"))
 default_mode = os.getenv("MODE", "default")
@@ -82,6 +84,13 @@ parser.add_argument(
     type=str,
     default=None,
     help="SSL keyfile",
+)
+parser.add_argument(
+    "--use-sfast",
+    "--use_sfast",
+    type=bool,
+    default=USE_SFAST,
+    help="Use sfast",
 )
 
 args = Args(**vars(parser.parse_args()))

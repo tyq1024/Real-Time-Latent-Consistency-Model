@@ -10,24 +10,21 @@
     mediaDevices
   } from '$lib/mediaStream';
   import MediaListSwitcher from './MediaListSwitcher.svelte';
-  export let width = 512;
-  export let height = 512;
-  const size = { width, height };
 
   let videoEl: HTMLVideoElement;
   let canvasEl: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D;
   let videoFrameCallbackId: number;
-
+  const WIDTH = 768;
+  const HEIGHT = 768;
   // ajust the throttle time to your needs
   const THROTTLE_TIME = 1000 / 15;
   let selectedDevice: string = '';
-  let videoIsReady = false;
 
   onMount(() => {
     ctx = canvasEl.getContext('2d') as CanvasRenderingContext2D;
-    canvasEl.width = size.width;
-    canvasEl.height = size.height;
+    canvasEl.width = WIDTH;
+    canvasEl.height = HEIGHT;
   });
   $: {
     console.log(selectedDevice);
@@ -47,33 +44,34 @@
     }
     const videoWidth = videoEl.videoWidth;
     const videoHeight = videoEl.videoHeight;
-    let height0 = videoHeight;
-    let width0 = videoWidth;
-    let x0 = 0;
-    let y0 = 0;
-    if (videoWidth > videoHeight) {
-      width0 = videoHeight;
-      x0 = (videoWidth - videoHeight) / 2;
-    } else {
-      height0 = videoWidth;
-      y0 = (videoHeight - videoWidth) / 2;
-    }
-    ctx.drawImage(videoEl, x0, y0, width0, height0, 0, 0, size.width, size.height);
-    const blob = await new Promise<Blob>((resolve) => {
-      canvasEl.toBlob(
-        (blob) => {
-          resolve(blob as Blob);
-        },
-        'image/jpeg',
-        1
-      );
-    });
+    const blob = await grapCropBlobImg(
+      videoEl,
+      videoWidth / 2 - WIDTH / 2,
+      videoHeight / 2 - HEIGHT / 2,
+      WIDTH,
+      HEIGHT
+    );
+
     onFrameChangeStore.set({ blob });
     videoFrameCallbackId = videoEl.requestVideoFrameCallback(onFrameChange);
   }
 
-  $: if ($mediaStreamStatus == MediaStreamStatusEnum.CONNECTED && videoIsReady) {
+  $: if ($mediaStreamStatus == MediaStreamStatusEnum.CONNECTED) {
     videoFrameCallbackId = videoEl.requestVideoFrameCallback(onFrameChange);
+  }
+  async function grapCropBlobImg(
+    video: HTMLVideoElement,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ) {
+    const canvas = new OffscreenCanvas(width, height);
+
+    const ctx = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    ctx.drawImage(video, x, y, width, height, 0, 0, width, height);
+    const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 1 });
+    return blob;
   }
 </script>
 
@@ -87,9 +85,6 @@
     <video
       class="pointer-events-none aspect-square w-full object-cover"
       bind:this={videoEl}
-      on:loadeddata={() => {
-        videoIsReady = true;
-      }}
       playsinline
       autoplay
       muted

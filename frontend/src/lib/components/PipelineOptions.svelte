@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { Fields } from '$lib/types';
+  import { createEventDispatcher } from 'svelte';
+  import type { FieldProps } from '$lib/types';
   import { FieldType } from '$lib/types';
   import InputRange from './InputRange.svelte';
   import SeedInput from './SeedInput.svelte';
@@ -8,10 +9,10 @@
   import Selectlist from './Selectlist.svelte';
   import { pipelineValues } from '$lib/store';
 
-  export let pipelineParams: Fields;
+  export let pipelineParams: FieldProps[];
 
-  $: advanceOptions = Object.values(pipelineParams)?.filter((e) => e?.hide == true);
-  $: featuredOptions = Object.values(pipelineParams)?.filter((e) => e?.hide !== true);
+  $: advanceOptions = pipelineParams?.filter((e) => e?.hide == true);
+  $: featuredOptions = pipelineParams?.filter((e) => e?.hide !== true);
 </script>
 
 <div class="flex flex-col gap-3">
@@ -36,7 +37,7 @@
   <details>
     <summary class="cursor-pointer font-medium">Advanced Options</summary>
     <div
-      class="grid grid-cols-1 items-center gap-3 {Object.values(pipelineParams).length > 5
+      class="grid grid-cols-1 items-center gap-3 {pipelineParams.length > 5
         ? 'sm:grid-cols-2'
         : ''}"
     >

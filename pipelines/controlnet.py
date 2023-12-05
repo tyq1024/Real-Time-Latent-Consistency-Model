@@ -2,10 +2,12 @@ from diffusers import (
     StableDiffusionControlNetImg2ImgPipeline,
     AutoencoderTiny,
     ControlNetModel,
+    UNet2DConditionModel,
 )
 from compel import Compel
 import torch
 from pipelines.utils.canny_gpu import SobelOperator
+from pipeline_latent_consistency_img2img_controlnet import LatentConsistencyModelImg2ImgPipelineControlnet
 
 try:
     import intel_extension_for_pytorch as ipex  # type: ignore
@@ -16,39 +18,47 @@ import psutil
 from config import Args
 from pydantic import BaseModel, Field
 from PIL import Image
-import math
+import time
 
-base_model = "SimianLuo/LCM_Dreamshaper_v7"
-taesd_model = "madebyollin/taesd"
-controlnet_model = "lllyasviel/control_v11p_sd15_canny"
+from sfast.compilers.stable_diffusion_pipeline_compiler import (
+    compile, CompilationConfig)
 
-default_prompt = "Portrait of The Terminator with , glare pose, detailed, intricate, full of colour, cinematic lighting, trending on artstation, 8k, hyperrealistic, focused, extreme details, unreal engine 5 cinematic, masterpiece"
-page_content = """
-<h1 class="text-3xl font-bold">Real-Time Latent Consistency Model</h1>
-<h3 class="text-xl font-bold">LCM + Controlnet Canny</h3>
-<p class="text-sm">
-    This demo showcases
-    <a
-    href="https://huggingface.co/blog/lcm_lora"
-    target="_blank"
-    class="text-blue-500 underline hover:no-underline">LCM LoRA</a
-    >
-    ControlNet + Image to Image pipeline using
-    <a
-    href="https://huggingface.co/docs/diffusers/main/en/using-diffusers/lcm#performing-inference-with-lcm"
-    target="_blank"
-    class="text-blue-500 underline hover:no-underline">Diffusers</a
-    > with a MJPEG stream server.
-</p>
-<p class="text-sm text-gray-500">
-    Change the prompt to generate different images, accepts <a
-    href="https://github.com/damian0815/compel/blob/main/doc/syntax.md"
-    target="_blank"
-    class="text-blue-500 underline hover:no-underline">Compel</a
-    > syntax.
-</p>
-"""
+base_model = "DIR"
+unet_model = "DIR"
+unet = UNet2DConditionModel.from_pretrained(
+    unet_model, subfolder="unet", low_cpu_mem_usage=False, local_files_only=True
+)
+taesd_model = "DIR"
+controlnet_model = "DIR" #"lllyasviel/control_v11p_sd15_canny"
+controlnet_model_hed = "DIR"
+#default_prompt = "Portrait of The Terminator with , glare pose, detailed, intricate, full of colour, cinematic lighting, trending on artstation, 8k, hyperrealistic, focused, extreme details, unreal engine 5 cinematic, masterpiece"
+default_prompt = "Portrait of Joker Halloween costume, face painting, glare pose, detailed, intricate, full of colour, cinematic lighting, trending on artstation, 8k, hyperrealistic, focused, extreme details, unreal engine 5 cinematic, masterpiece"
 
+sfast_config = CompilationConfig.Default()
+
+# xformers and Triton are suggested for achieving best performance.
+# It might be slow for Triton to generate, compile and fine-tune kernels.
+try:
+    import xformers
+    sfast_config.enable_xformers = True
+except ImportError:
+    print('xformers not installed, skip')
+# NOTE:
+# When GPU VRAM is insufficient or the architecture is too old, Triton might be slow.
+# Disable Triton if you encounter this problem.
+try:
+    import triton
+    sfast_config.enable_triton = True
+except ImportError:
+    print('Triton not installed, skip')
+# NOTE:
+# CUDA Graph is suggested for small batch sizes and small resolutions to reduce CPU overhead.
+# My implementation can handle dynamic shape with increased need for GPU memory.
+# But when your GPU VRAM is insufficient or the image resolution is high,
+# CUDA Graph could cause less efficient VRAM utilization and slow down the inference,
+# especially when on Windows or WSL which has the "shared VRAM" mechanism.
+# If you meet problems related to it, you should disable it.
+sfast_config.enable_cuda_graph = True
 
 class Pipeline:
     class Info(BaseModel):
@@ -56,7 +66,6 @@ class Pipeline:
         title: str = "LCM + Controlnet"
         description: str = "Generates an image from a text prompt"
         input_mode: str = "image"
-        page_content: str = page_content
 
     class InputParams(BaseModel):
         prompt: str = Field(
@@ -69,16 +78,16 @@ class Pipeline:
             2159232, min=0, title="Seed", field="seed", hide=True, id="seed"
         )
         steps: int = Field(
-            4, min=1, max=15, title="Steps", field="range", hide=True, id="steps"
+            1, min=1, max=15, title="Steps", field="range", hide=True, id="steps"
         )
         width: int = Field(
-            768, min=2, max=15, title="Width", disabled=True, hide=True, id="width"
+            512, min=2, max=15, title="Width", disabled=True, hide=True, id="width"
         )
         height: int = Field(
-            768, min=2, max=15, title="Height", disabled=True, hide=True, id="height"
+            512, min=2, max=15, title="Height", disabled=True, hide=True, id="height"
         )
         guidance_scale: float = Field(
-            0.2,
+            1.0,
             min=0,
             max=5,
             step=0.001,
@@ -129,8 +138,8 @@ class Pipeline:
         )
         canny_low_threshold: float = Field(
             0.31,
-            min=0,
-            max=1.0,
+            min=0.01,
+            max=0.99,
             step=0.001,
             title="Canny Low Threshold",
             field="range",
@@ -139,8 +148,8 @@ class Pipeline:
         )
         canny_high_threshold: float = Field(
             0.125,
-            min=0,
-            max=1.0,
+            min=0.01,
+            max=0.99,
             step=0.001,
             title="Canny High Threshold",
             field="range",
@@ -159,20 +168,26 @@ class Pipeline:
         controlnet_canny = ControlNetModel.from_pretrained(
             controlnet_model, torch_dtype=torch_dtype
         ).to(device)
+        controlnet_hed = ControlNetModel.from_pretrained(
+            controlnet_model_hed, torch_dtype=torch_dtype
+        ).to(device)        
+        controlnets = [controlnet_canny, controlnet_hed]
         if args.safety_checker:
-            self.pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-                base_model, controlnet=controlnet_canny
+            self.pipe = LatentConsistencyModelImg2ImgPipelineControlnet.from_pretrained(
+                base_model, controlnet=controlnets, unet=unet, device=device
             )
         else:
-            self.pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+            self.pipe = LatentConsistencyModelImg2ImgPipelineControlnet.from_pretrained(
                 base_model,
                 safety_checker=None,
-                controlnet=controlnet_canny,
+                controlnet=controlnets,
+                unet=unet,
+                device=device
             )
         if args.use_taesd:
             self.pipe.vae = AutoencoderTiny.from_pretrained(
                 taesd_model, torch_dtype=torch_dtype, use_safetensors=True
-            ).to(device)
+            )
         self.canny_torch = SobelOperator(device=device)
         self.pipe.set_progress_bar_config(disable=True)
         self.pipe.to(device=device, dtype=torch_dtype)
@@ -193,9 +208,13 @@ class Pipeline:
 
             self.pipe(
                 prompt="warmup",
-                image=[Image.new("RGB", (768, 768))],
-                control_image=[Image.new("RGB", (768, 768))],
+                image=[Image.new("RGB", (512, 512))],
+                control_image=[Image.new("RGB", (512, 512)) for _ in range(2)],
+                controlnet_conditioning_scale=[0., 0.],
             )
+
+        if args.use_sfast:
+            self.pipe = compile(self.pipe, sfast_config)
 
         self.compel_proc = Compel(
             tokenizer=self.pipe.tokenizer,
@@ -203,29 +222,34 @@ class Pipeline:
             truncate_long_prompts=False,
         )
 
+        self.store_prompt_embeds = None
+
+        self.last_image = Image.new("RGB", (512, 512))
+
     def predict(self, params: "Pipeline.InputParams") -> Image.Image:
         generator = torch.manual_seed(params.seed)
-        prompt_embeds = self.compel_proc(params.prompt)
-        control_image = self.canny_torch(
-            params.image, params.canny_low_threshold, params.canny_high_threshold
+        if self.store_prompt_embeds is None:
+            prompt_embeds = self.compel_proc(params.prompt)
+            self.store_prompt_embeds = prompt_embeds
+        else:
+            prompt_embeds = self.store_prompt_embeds
+        input_image = params.image.resize((512, 512))
+        control_image_canny = self.canny_torch(
+            input_image, params.canny_low_threshold, params.canny_high_threshold
         )
-        steps = params.steps
-        strength = params.strength
-        if int(steps * strength) < 1:
-            steps = math.ceil(1 / max(0.10, strength))
 
         results = self.pipe(
-            image=params.image,
-            control_image=control_image,
+            image=input_image,
+            control_image=[control_image_canny, control_image_canny],
             prompt_embeds=prompt_embeds,
             generator=generator,
-            strength=strength,
-            num_inference_steps=steps,
+            strength=params.strength,
+            num_inference_steps=params.steps,
             guidance_scale=params.guidance_scale,
             width=params.width,
             height=params.height,
             output_type="pil",
-            controlnet_conditioning_scale=params.controlnet_scale,
+            controlnet_conditioning_scale=[params.controlnet_scale, params.controlnet_scale],
             control_guidance_start=params.controlnet_start,
             control_guidance_end=params.controlnet_end,
         )
@@ -241,8 +265,8 @@ class Pipeline:
         if params.debug_canny:
             # paste control_image on top of result_image
             w0, h0 = (200, 200)
-            control_image = control_image.resize((w0, h0))
+            control_image_canny = control_image_canny.resize((w0, h0))
             w1, h1 = result_image.size
-            result_image.paste(control_image, (w1 - w0, h1 - h0))
+            result_image.paste(control_image_canny, (w1 - w0, h1 - h0))
 
         return result_image

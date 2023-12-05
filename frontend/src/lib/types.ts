@@ -11,11 +11,6 @@ export const enum PipelineMode {
     TEXT = "text",
 }
 
-
-export interface Fields {
-    [key: string]: FieldProps;
-}
-
 export interface FieldProps {
     default: number | string;
     max?: number;

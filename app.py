@@ -12,6 +12,7 @@ print("TORCH_DTYPE:", torch_dtype)
 print("PIPELINE:", args.pipeline)
 print("SAFETY_CHECKER:", args.safety_checker)
 print("TORCH_COMPILE:", args.torch_compile)
+print("USE_SFAST:", args.use_sfast)
 
 
 app = FastAPI()

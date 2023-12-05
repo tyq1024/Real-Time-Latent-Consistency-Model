@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="./favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    
+		<link href="./_app/immutable/assets/0.59e79939.css" rel="stylesheet">
+		<link href="./_app/immutable/assets/2.4b49e46c.css" rel="stylesheet">
+		<link rel="modulepreload" href="./_app/immutable/entry/start.27fbabb6.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/scheduler.d303939e.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/singletons.446265e1.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index.57cd3851.js">
+		<link rel="modulepreload" href="./_app/immutable/entry/app.94eb8a1b.js">
+		<link rel="modulepreload" href="./_app/immutable/chunks/index.b95362ef.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/0.523abed8.js">
+		<link rel="modulepreload" href="./_app/immutable/nodes/2.7386ed29.js">
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <div style="display: contents">  <main class="container mx-auto flex max-w-5xl flex-col gap-3 px-4 py-4"><article class="text-center"><h1 class="text-3xl font-bold" data-svelte-h="svelte-14nlvbe">Real-Time Latent Consistency Model</h1>  <p class="text-sm" data-svelte-h="svelte-8ygf88">This demo showcases
+      <a href="https://huggingface.co/blog/lcm_lora" target="_blank" class="text-blue-500 underline hover:no-underline">LCM LoRA</a>
+      Image to Image pipeline using
+      <a href="https://huggingface.co/docs/diffusers/main/en/using-diffusers/lcm#performing-inference-with-lcm" target="_blank" class="text-blue-500 underline hover:no-underline">Diffusers</a> with a MJPEG stream server.</p> <p class="text-sm text-gray-500" data-svelte-h="svelte-61hhd2">Change the prompt to generate different images, accepts <a href="https://github.com/damian0815/compel/blob/main/doc/syntax.md" target="_blank" class="text-blue-500 underline hover:no-underline">Compel</a> syntax.</p> </article>  <div class="flex items-center justify-center gap-3 py-48 text-2xl"><svg xmlns="http://www.w3.org/2000/svg" height="1em" viewBox="0 0 512 512" class="animate-spin opacity-50"><path fill="currentColor" d="M304 48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zm0 416a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM48 304a48 48 0 1 0 0-96 48 48 0 1 0 0 96zm464-48a48 48 0 1 0 -96 0 48 48 0 1 0 96 0zM142.9 437A48 48 0 1 0 75 369.1 48 48 0 1 0 142.9 437zm0-294.2A48 48 0 1 0 75 75a48 48 0 1 0 67.9 67.9zM369.1 437A48 48 0 1 0 437 369.1 48 48 0 1 0 369.1 437z"></path></svg> <p data-svelte-h="svelte-qdsr2u">Loading...</p></div> </main> 
+			
+			<script>
+				{
+					__sveltekit_1xtjvwa = {
+						base: new URL(".", location).pathname.slice(0, -1),
+						env: {}
+					};
+
+					const element = document.currentScript.parentElement;
+
+					const data = [null,null];
+
+					Promise.all([
+						import("./_app/immutable/entry/start.27fbabb6.js"),
+						import("./_app/immutable/entry/app.94eb8a1b.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element, {
+							node_ids: [0, 2],
+							data,
+							form: null,
+							error: null
+						});
+					});
+				}
+			</script>
+		</div>
+  </body>
+</html>
