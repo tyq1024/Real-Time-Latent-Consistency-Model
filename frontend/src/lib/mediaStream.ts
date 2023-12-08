@@ -13,7 +13,7 @@ export const mediaStream = writable<MediaStream | null>(null);
 
 export const mediaStreamActions = {
     async enumerateDevices() {
-        // console.log("Enumerating devices");
+        console.log("Enumerating devices");
         await navigator.mediaDevices.enumerateDevices()
             .then(devices => {
                 const cameras = devices.filter(device => device.kind === 'videoinput');

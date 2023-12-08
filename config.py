@@ -24,7 +24,7 @@ TIMEOUT = float(os.environ.get("TIMEOUT", 0))
 SAFETY_CHECKER = os.environ.get("SAFETY_CHECKER", None) == "True"
 TORCH_COMPILE = os.environ.get("TORCH_COMPILE", None) == "True"
 USE_TAESD = os.environ.get("USE_TAESD", None) == "True"
-USE_SFAST = False
+USE_SFAST = os.environ.get("USE_SFAST", None) == "True"
 default_host = os.getenv("HOST", "0.0.0.0")
 default_port = int(os.getenv("PORT", "7860"))
 default_mode = os.getenv("MODE", "default")
