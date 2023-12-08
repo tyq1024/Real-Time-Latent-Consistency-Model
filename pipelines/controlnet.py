@@ -20,45 +20,17 @@ from pydantic import BaseModel, Field
 from PIL import Image
 import time
 
-from sfast.compilers.stable_diffusion_pipeline_compiler import (
-    compile, CompilationConfig)
-
-base_model = "DIR"
-unet_model = "DIR"
+base_model = "SimianLuo/LCM_Dreamshaper_v7"
+unet_model = "SimianLuo/LCM_Dreamshaper_v7"
 unet = UNet2DConditionModel.from_pretrained(
     unet_model, subfolder="unet", low_cpu_mem_usage=False, local_files_only=True
 )
-taesd_model = "DIR"
-controlnet_model = "DIR" #"lllyasviel/control_v11p_sd15_canny"
-controlnet_model_hed = "DIR"
+taesd_model = "madebyollin/taesd"
+controlnet_model = "lllyasviel/control_v11p_sd15_canny"
+controlnet_model_hed = "lllyasviel/sd-controlnet-hed"
 #default_prompt = "Portrait of The Terminator with , glare pose, detailed, intricate, full of colour, cinematic lighting, trending on artstation, 8k, hyperrealistic, focused, extreme details, unreal engine 5 cinematic, masterpiece"
 default_prompt = "Portrait of Joker Halloween costume, face painting, glare pose, detailed, intricate, full of colour, cinematic lighting, trending on artstation, 8k, hyperrealistic, focused, extreme details, unreal engine 5 cinematic, masterpiece"
 
-sfast_config = CompilationConfig.Default()
-
-# xformers and Triton are suggested for achieving best performance.
-# It might be slow for Triton to generate, compile and fine-tune kernels.
-try:
-    import xformers
-    sfast_config.enable_xformers = True
-except ImportError:
-    print('xformers not installed, skip')
-# NOTE:
-# When GPU VRAM is insufficient or the architecture is too old, Triton might be slow.
-# Disable Triton if you encounter this problem.
-try:
-    import triton
-    sfast_config.enable_triton = True
-except ImportError:
-    print('Triton not installed, skip')
-# NOTE:
-# CUDA Graph is suggested for small batch sizes and small resolutions to reduce CPU overhead.
-# My implementation can handle dynamic shape with increased need for GPU memory.
-# But when your GPU VRAM is insufficient or the image resolution is high,
-# CUDA Graph could cause less efficient VRAM utilization and slow down the inference,
-# especially when on Windows or WSL which has the "shared VRAM" mechanism.
-# If you meet problems related to it, you should disable it.
-sfast_config.enable_cuda_graph = True
 
 class Pipeline:
     class Info(BaseModel):
@@ -199,12 +171,21 @@ class Pipeline:
             self.pipe.enable_attention_slicing()
 
         if args.torch_compile:
+            if torch.cuda.is_available():
+                self.pipe.unet.to(memory_format=torch.channels_last)
+                self.pipe.vae.to(memory_format=torch.channels_last)
+                if hasattr(self.pipe, "controlnet"):
+                    self.pipe.controlnet.to(memory_format=torch.channels_last)
             self.pipe.unet = torch.compile(
-                self.pipe.unet, mode="reduce-overhead", fullgraph=True
+                self.pipe.unet, mode="max-autotune", fullgraph=True
             )
             self.pipe.vae = torch.compile(
-                self.pipe.vae, mode="reduce-overhead", fullgraph=True
+                self.pipe.vae, mode="max-autotune", fullgraph=True
             )
+            # if hasattr(self.pipe, "controlnet"):
+            #     self.pipe.controlnet = torch.compile(
+            #         self.pipe.controlnet, mode="max-autotune", fullgraph=True
+            #     )
 
             self.pipe(
                 prompt="warmup",
@@ -214,6 +195,22 @@ class Pipeline:
             )
 
         if args.use_sfast:
+            from sfast.compilers.stable_diffusion_pipeline_compiler import (
+                compile, CompilationConfig)
+
+            sfast_config = CompilationConfig.Default()
+            try:
+                import xformers
+                sfast_config.enable_xformers = True
+            except ImportError:
+                print('xformers not installed, skip')
+            try:
+                import triton
+                sfast_config.enable_triton = True
+            except ImportError:
+                print('Triton not installed, skip')
+            sfast_config.enable_cuda_graph = True
+            sfast_config.preserve_parameters = False
             self.pipe = compile(self.pipe, sfast_config)
 
         self.compel_proc = Compel(
